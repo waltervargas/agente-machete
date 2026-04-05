@@ -17,11 +17,10 @@ from __future__ import annotations
 import importlib
 import inspect
 from types import ModuleType
-from typing import Any
 
 from machete.decorators import get_meta
 from machete.infra.graph import ResourceEdge, ResourceGraph, ResourceNode, ResourceType
-from machete.types import MacheteMeta, ResourceHint
+from machete.types import MacheteMeta
 
 
 def analyze_module(module: ModuleType | str) -> ResourceGraph:
@@ -91,11 +90,13 @@ def _add_agent(meta: MacheteMeta, graph: ResourceGraph) -> None:
         },
     )
     graph.add_node(apigw_node)
-    graph.add_edge(ResourceEdge(
-        source=apigw_node.id,
-        target=lambda_node.id,
-        relation="invokes",
-    ))
+    graph.add_edge(
+        ResourceEdge(
+            source=apigw_node.id,
+            target=lambda_node.id,
+            relation="invokes",
+        )
+    )
 
     # IAM role for the agent Lambda
     role_node = ResourceNode(
@@ -105,11 +106,13 @@ def _add_agent(meta: MacheteMeta, graph: ResourceGraph) -> None:
         properties={"assume_role_service": "lambda.amazonaws.com"},
     )
     graph.add_node(role_node)
-    graph.add_edge(ResourceEdge(
-        source=lambda_node.id,
-        target=role_node.id,
-        relation="assumes",
-    ))
+    graph.add_edge(
+        ResourceEdge(
+            source=lambda_node.id,
+            target=role_node.id,
+            relation="assumes",
+        )
+    )
 
     # Connect tools
     for tool_obj in meta.tools:
@@ -117,11 +120,13 @@ def _add_agent(meta: MacheteMeta, graph: ResourceGraph) -> None:
         if tool_meta:
             _add_tool(tool_meta, graph)
             tool_id = f"tool-{tool_meta.name}-lambda"
-            graph.add_edge(ResourceEdge(
-                source=lambda_node.id,
-                target=tool_id,
-                relation="invokes",
-            ))
+            graph.add_edge(
+                ResourceEdge(
+                    source=lambda_node.id,
+                    target=tool_id,
+                    relation="invokes",
+                )
+            )
 
 
 def _add_tool(meta: MacheteMeta, graph: ResourceGraph) -> None:
@@ -134,7 +139,7 @@ def _add_tool(meta: MacheteMeta, graph: ResourceGraph) -> None:
         type=ResourceType.LAMBDA,
         name=f"{meta.name}-handler",
         properties={
-            "handler": f"machete.runtime.lambda_handler.tool_handler",
+            "handler": "machete.runtime.lambda_handler.tool_handler",
             "runtime": "python3.11",
             "timeout": 60,
             "memory": 256,
@@ -152,11 +157,13 @@ def _add_tool(meta: MacheteMeta, graph: ResourceGraph) -> None:
             properties={"schedule_expression": meta.schedule},
         )
         graph.add_node(event_node)
-        graph.add_edge(ResourceEdge(
-            source=event_node.id,
-            target=lambda_node.id,
-            relation="triggers",
-        ))
+        graph.add_edge(
+            ResourceEdge(
+                source=event_node.id,
+                target=lambda_node.id,
+                relation="triggers",
+            )
+        )
 
     # Queue-based processing
     if meta.queue:
@@ -167,11 +174,13 @@ def _add_tool(meta: MacheteMeta, graph: ResourceGraph) -> None:
             properties={"visibility_timeout": 120},
         )
         graph.add_node(sqs_node)
-        graph.add_edge(ResourceEdge(
-            source=sqs_node.id,
-            target=lambda_node.id,
-            relation="triggers",
-        ))
+        graph.add_edge(
+            ResourceEdge(
+                source=sqs_node.id,
+                target=lambda_node.id,
+                relation="triggers",
+            )
+        )
 
 
 def _add_step(meta: MacheteMeta, graph: ResourceGraph) -> None:

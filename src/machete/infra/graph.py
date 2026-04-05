@@ -26,6 +26,7 @@ class ResourceType(str, Enum):
 @dataclass(frozen=True)
 class ResourceNode:
     """A single infrastructure resource."""
+
     id: str
     type: ResourceType
     name: str
@@ -35,6 +36,7 @@ class ResourceNode:
 @dataclass(frozen=True)
 class ResourceEdge:
     """A dependency between two resources."""
+
     source: str  # ResourceNode.id
     target: str  # ResourceNode.id
     relation: str = "depends_on"  # e.g., "invokes", "reads", "writes", "triggers"

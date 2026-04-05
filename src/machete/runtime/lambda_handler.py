@@ -28,15 +28,16 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     input_text = body.get("input", body.get("message", ""))
 
     agent_name = os.environ.get("MACHETE_AGENT", "")
-    model = os.environ.get("MACHETE_MODEL", "claude-sonnet-4-20250514")
 
     # Import the agent module (configured via environment)
     agent_module = os.environ.get("MACHETE_MODULE", "")
     if agent_module:
         import importlib
+
         mod = importlib.import_module(agent_module)
         # Find the agent function
         import inspect
+
         agent_fn = None
         for _, obj in inspect.getmembers(mod):
             meta = get_meta(obj)

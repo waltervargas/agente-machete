@@ -39,7 +39,9 @@ def main(argv: list[str] | None = None) -> None:
     synth_p = sub.add_parser("synth", help="Emit infrastructure (CloudFormation/CDK)")
     synth_p.add_argument("module", help="Python module path")
     synth_p.add_argument("--output", "-o", default="cdk.out", help="Output directory")
-    synth_p.add_argument("--format", "-f", default="cfn", choices=["cfn", "cdk"], help="Output format")
+    synth_p.add_argument(
+        "--format", "-f", default="cfn", choices=["cfn", "cdk"], help="Output format"
+    )
     synth_p.add_argument("--stack-name", default="MacheteStack", help="Stack name")
 
     # --- graph ---
@@ -66,9 +68,7 @@ def main(argv: list[str] | None = None) -> None:
 
 def _cmd_run(args: Any) -> None:
     import importlib
-    import inspect
 
-    from machete.decorators import get_meta
     from machete.runtime.local import run
 
     mod = importlib.import_module(args.module)
@@ -134,7 +134,7 @@ def _find_agent(mod: Any, agent_name: str | None) -> Any:
                 agents.append(obj)
 
     if not agents:
-        print(f"Error: No @agent found in module", file=sys.stderr)
+        print("Error: No @agent found in module", file=sys.stderr)
         sys.exit(1)
     if len(agents) > 1 and agent_name is None:
         names = [get_meta(a).name for a in agents]  # type: ignore[union-attr]
@@ -148,12 +148,15 @@ def _make_provider(name: str) -> Any:
     match name:
         case "mock":
             from machete.llm.protocol import MockProvider
+
             return MockProvider()
         case "anthropic":
             from machete.llm.protocol import AnthropicProvider
+
             return AnthropicProvider()
         case "openai":
             from machete.llm.protocol import OpenAIProvider
+
             return OpenAIProvider()
         case _:
             raise ValueError(f"Unknown provider: {name}")

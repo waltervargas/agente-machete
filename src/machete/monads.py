@@ -35,6 +35,7 @@ AgentResult: TypeAlias = IOResult[T, AgentError]
 # Lifting helpers
 # ---------------------------------------------------------------------------
 
+
 def success(value: T) -> AgentResult[T]:
     """Lift a pure value into a successful AgentResult."""
     return IOSuccess(value)
@@ -48,6 +49,7 @@ def failure(error: AgentError) -> AgentResult[Any]:
 # ---------------------------------------------------------------------------
 # safe_step — natural transformation from plain functions to monadic
 # ---------------------------------------------------------------------------
+
 
 def safe_step(
     name: str = "",
@@ -94,6 +96,7 @@ def safe_step(
 # ---------------------------------------------------------------------------
 # flow_steps — Kleisli composition of monadic steps
 # ---------------------------------------------------------------------------
+
 
 def flow_steps(
     initial: AgentResult[T],

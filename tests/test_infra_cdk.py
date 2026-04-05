@@ -18,7 +18,8 @@ class TestEmitCdkJson:
         template = emit_cdk_json(graph)
 
         lambda_resources = {
-            k: v for k, v in template["Resources"].items()
+            k: v
+            for k, v in template["Resources"].items()
             if v.get("Type") == "AWS::Lambda::Function"
         }
         assert len(lambda_resources) >= 1
@@ -28,7 +29,8 @@ class TestEmitCdkJson:
         template = emit_cdk_json(graph)
 
         apigw = {
-            k: v for k, v in template["Resources"].items()
+            k: v
+            for k, v in template["Resources"].items()
             if v.get("Type") == "AWS::ApiGateway::RestApi"
         }
         assert len(apigw) == 1

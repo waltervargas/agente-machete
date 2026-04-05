@@ -14,18 +14,19 @@ def _add(a: int, b: int) -> int:
 
 
 @agent(name="calc", tools=[_add], system_prompt="You are a calculator.")
-def _calc(question: str) -> str:
-    ...
+def _calc(question: str) -> str: ...
 
 
 class TestRun:
     def test_simple_run(self) -> None:
-        provider = MockProvider(responses=[
-            LLMResponse(
-                message=LLMMessage(role=Role.ASSISTANT, content="42"),
-                model="mock",
-            ),
-        ])
+        provider = MockProvider(
+            responses=[
+                LLMResponse(
+                    message=LLMMessage(role=Role.ASSISTANT, content="42"),
+                    model="mock",
+                ),
+            ]
+        )
         result = run(_calc, "What is the answer?", provider=provider)
         assert result == "42"
 
@@ -42,22 +43,24 @@ class TestRun:
             run(not_an_agent, "hi")
 
     def test_run_with_tool_call(self) -> None:
-        provider = MockProvider(responses=[
-            LLMResponse(
-                message=LLMMessage(
-                    role=Role.ASSISTANT,
-                    content="",
-                    tool_calls=[ToolCall(id="tc1", name="add", arguments={"a": 2, "b": 3})],
+        provider = MockProvider(
+            responses=[
+                LLMResponse(
+                    message=LLMMessage(
+                        role=Role.ASSISTANT,
+                        content="",
+                        tool_calls=[ToolCall(id="tc1", name="add", arguments={"a": 2, "b": 3})],
+                    ),
+                    model="mock",
+                    stop_reason="tool_use",
                 ),
-                model="mock",
-                stop_reason="tool_use",
-            ),
-            LLMResponse(
-                message=LLMMessage(role=Role.ASSISTANT, content="5"),
-                model="mock",
-                stop_reason="end_turn",
-            ),
-        ])
+                LLMResponse(
+                    message=LLMMessage(role=Role.ASSISTANT, content="5"),
+                    model="mock",
+                    stop_reason="end_turn",
+                ),
+            ]
+        )
         result = run(_calc, "2+3", provider=provider)
         assert result == "5"
 

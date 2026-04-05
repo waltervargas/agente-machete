@@ -46,6 +46,7 @@ class LLMProvider(Protocol):
 # MockProvider — for testing and local dev without API keys
 # ---------------------------------------------------------------------------
 
+
 class MockProvider:
     """Deterministic mock provider for testing.
 
@@ -102,6 +103,7 @@ class MockProvider:
 # AnthropicProvider — wraps the Anthropic SDK
 # ---------------------------------------------------------------------------
 
+
 class AnthropicProvider:
     """Anthropic Claude adapter.
 
@@ -113,8 +115,7 @@ class AnthropicProvider:
             import anthropic
         except ImportError:
             raise ImportError(
-                "anthropic package required. Install with: "
-                "pip install agente-machete[anthropic]"
+                "anthropic package required. Install with: pip install agente-machete[anthropic]"
             )
         self._client = anthropic.Anthropic(api_key=api_key)
 
@@ -136,31 +137,39 @@ class AnthropicProvider:
                 if msg.role == Role.SYSTEM:
                     system_msg = msg.content
                 elif msg.role == Role.TOOL:
-                    api_messages.append({
-                        "role": "user",
-                        "content": [{
-                            "type": "tool_result",
-                            "tool_use_id": msg.tool_call_id,
-                            "content": msg.content,
-                        }],
-                    })
+                    api_messages.append(
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": msg.tool_call_id,
+                                    "content": msg.content,
+                                }
+                            ],
+                        }
+                    )
                 elif msg.role == Role.ASSISTANT and msg.tool_calls:
                     content: list[dict[str, Any]] = []
                     if msg.content:
                         content.append({"type": "text", "text": msg.content})
                     for tc in msg.tool_calls:
-                        content.append({
-                            "type": "tool_use",
-                            "id": tc.id,
-                            "name": tc.name,
-                            "input": tc.arguments,
-                        })
+                        content.append(
+                            {
+                                "type": "tool_use",
+                                "id": tc.id,
+                                "name": tc.name,
+                                "input": tc.arguments,
+                            }
+                        )
                     api_messages.append({"role": "assistant", "content": content})
                 else:
-                    api_messages.append({
-                        "role": msg.role.value,
-                        "content": msg.content,
-                    })
+                    api_messages.append(
+                        {
+                            "role": msg.role.value,
+                            "content": msg.content,
+                        }
+                    )
 
             # Build API kwargs
             kwargs: dict[str, Any] = {
@@ -178,11 +187,13 @@ class AnthropicProvider:
                 anthropic_tools = []
                 for t in tools:
                     fn = t.get("function", {})
-                    anthropic_tools.append({
-                        "name": fn.get("name", ""),
-                        "description": fn.get("description", ""),
-                        "input_schema": fn.get("parameters", {}),
-                    })
+                    anthropic_tools.append(
+                        {
+                            "name": fn.get("name", ""),
+                            "description": fn.get("description", ""),
+                            "input_schema": fn.get("parameters", {}),
+                        }
+                    )
                 kwargs["tools"] = anthropic_tools
 
             response = self._client.messages.create(**kwargs)
@@ -226,6 +237,7 @@ class AnthropicProvider:
 # OpenAIProvider — wraps the OpenAI SDK
 # ---------------------------------------------------------------------------
 
+
 class OpenAIProvider:
     """OpenAI adapter.
 
@@ -237,8 +249,7 @@ class OpenAIProvider:
             import openai
         except ImportError:
             raise ImportError(
-                "openai package required. Install with: "
-                "pip install agente-machete[openai]"
+                "openai package required. Install with: pip install agente-machete[openai]"
             )
         self._client = openai.OpenAI(api_key=api_key)
 

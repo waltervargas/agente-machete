@@ -9,19 +9,17 @@ CT mapping:
 
 from __future__ import annotations
 
-import json
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from returns.io import IOFailure, IOResult, IOSuccess
+from returns.io import IOFailure, IOSuccess
 
 from machete.context import AgentContext, build_context, tool_session
 from machete.decorators import get_meta, get_tool_schema
 from machete.monads import AgentResult, failure, success
 from machete.types import (
-    AgentError,
     LLMMessage,
     LLMResponse,
     PipelineError,
@@ -56,6 +54,7 @@ def logging_middleware(step: StepFn) -> StepFn:
 # ---------------------------------------------------------------------------
 # Core pipeline steps
 # ---------------------------------------------------------------------------
+
 
 def _execute_tool(ctx: AgentContext, tool_call: ToolCall) -> AgentResult[str]:
     """Execute a single tool call, returning the result as a string."""
@@ -130,6 +129,7 @@ def _tool_step(ctx: AgentContext) -> AgentResult[AgentContext]:
 # ---------------------------------------------------------------------------
 # AgentPipeline — the main orchestrator
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class AgentPipeline:

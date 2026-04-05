@@ -1,6 +1,6 @@
 """Tests for the pipeline engine — the agentic loop."""
 
-from returns.io import IOSuccess, IOFailure
+from returns.io import IOSuccess
 
 from machete.context import AgentContext
 from machete.decorators import agent, tool
@@ -31,13 +31,15 @@ def _make_ctx(
 class TestAgentPipeline:
     def test_simple_response(self) -> None:
         """Agent returns a text response with no tool calls."""
-        provider = MockProvider(responses=[
-            LLMResponse(
-                message=LLMMessage(role=Role.ASSISTANT, content="Hello back!"),
-                model="mock",
-                stop_reason="end_turn",
-            ),
-        ])
+        provider = MockProvider(
+            responses=[
+                LLMResponse(
+                    message=LLMMessage(role=Role.ASSISTANT, content="Hello back!"),
+                    model="mock",
+                    stop_reason="end_turn",
+                ),
+            ]
+        )
         ctx = _make_ctx(provider)
         pipeline = AgentPipeline()
         result = pipeline.run(ctx)
@@ -46,24 +48,26 @@ class TestAgentPipeline:
 
     def test_tool_call_loop(self) -> None:
         """Agent calls a tool, gets result, then responds."""
-        provider = MockProvider(responses=[
-            # First: LLM requests tool call
-            LLMResponse(
-                message=LLMMessage(
-                    role=Role.ASSISTANT,
-                    content="",
-                    tool_calls=[ToolCall(id="tc1", name="add", arguments={"a": 2, "b": 3})],
+        provider = MockProvider(
+            responses=[
+                # First: LLM requests tool call
+                LLMResponse(
+                    message=LLMMessage(
+                        role=Role.ASSISTANT,
+                        content="",
+                        tool_calls=[ToolCall(id="tc1", name="add", arguments={"a": 2, "b": 3})],
+                    ),
+                    model="mock",
+                    stop_reason="tool_use",
                 ),
-                model="mock",
-                stop_reason="tool_use",
-            ),
-            # Second: LLM gives final answer after tool result
-            LLMResponse(
-                message=LLMMessage(role=Role.ASSISTANT, content="The answer is 5."),
-                model="mock",
-                stop_reason="end_turn",
-            ),
-        ])
+                # Second: LLM gives final answer after tool result
+                LLMResponse(
+                    message=LLMMessage(role=Role.ASSISTANT, content="The answer is 5."),
+                    model="mock",
+                    stop_reason="end_turn",
+                ),
+            ]
+        )
 
         @tool(name="add", description="Add numbers")
         def add(a: int, b: int) -> int:
@@ -79,22 +83,24 @@ class TestAgentPipeline:
 
     def test_tool_error_reported_to_llm(self) -> None:
         """When a tool raises, the error is sent back to the LLM (not pipeline failure)."""
-        provider = MockProvider(responses=[
-            LLMResponse(
-                message=LLMMessage(
-                    role=Role.ASSISTANT,
-                    content="",
-                    tool_calls=[ToolCall(id="tc1", name="broken", arguments={})],
+        provider = MockProvider(
+            responses=[
+                LLMResponse(
+                    message=LLMMessage(
+                        role=Role.ASSISTANT,
+                        content="",
+                        tool_calls=[ToolCall(id="tc1", name="broken", arguments={})],
+                    ),
+                    model="mock",
+                    stop_reason="tool_use",
                 ),
-                model="mock",
-                stop_reason="tool_use",
-            ),
-            LLMResponse(
-                message=LLMMessage(role=Role.ASSISTANT, content="Sorry, the tool failed."),
-                model="mock",
-                stop_reason="end_turn",
-            ),
-        ])
+                LLMResponse(
+                    message=LLMMessage(role=Role.ASSISTANT, content="Sorry, the tool failed."),
+                    model="mock",
+                    stop_reason="end_turn",
+                ),
+            ]
+        )
 
         @tool(name="broken", description="Always fails")
         def broken() -> str:
@@ -109,6 +115,7 @@ class TestAgentPipeline:
 
     def test_max_iterations_respected(self) -> None:
         """Pipeline stops after max_iterations even if LLM keeps requesting tools."""
+
         # Provider always requests tools
         def always_tool_call(messages, tools):
             return LLMResponse(
@@ -148,16 +155,17 @@ class TestRunFromAgent:
             return f"Hello, {name}!"
 
         @agent(name="greeter", tools=[greet], system_prompt="Be friendly.")
-        def greeter(q: str) -> str:
-            ...
+        def greeter(q: str) -> str: ...
 
-        provider = MockProvider(responses=[
-            LLMResponse(
-                message=LLMMessage(role=Role.ASSISTANT, content="Hi there!"),
-                model="mock",
-                stop_reason="end_turn",
-            ),
-        ])
+        provider = MockProvider(
+            responses=[
+                LLMResponse(
+                    message=LLMMessage(role=Role.ASSISTANT, content="Hi there!"),
+                    model="mock",
+                    stop_reason="end_turn",
+                ),
+            ]
+        )
 
         pipeline = AgentPipeline()
         result = pipeline.run_from_agent(greeter, provider, "Hello")

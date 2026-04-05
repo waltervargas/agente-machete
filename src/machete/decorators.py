@@ -21,7 +21,6 @@ from machete.types import (
     MacheteMeta,
     ResourceHint,
     ToolParameter,
-    ToolSpec,
 )
 
 P = ParamSpec("P")
@@ -31,6 +30,7 @@ T = TypeVar("T")
 # ---------------------------------------------------------------------------
 # @tool — turns a plain function into a ToolSpec
 # ---------------------------------------------------------------------------
+
 
 def tool(
     name: str | None = None,
@@ -120,6 +120,7 @@ def tool(
 # @step — marks a function as a composable pipeline step
 # ---------------------------------------------------------------------------
 
+
 def step(
     name: str | None = None,
 ) -> Callable[[Callable[P, T]], Callable[P, T]]:
@@ -152,6 +153,7 @@ def step(
 # ---------------------------------------------------------------------------
 # @agent — the top-level decorator that ties everything together
 # ---------------------------------------------------------------------------
+
 
 def agent(
     name: str | None = None,

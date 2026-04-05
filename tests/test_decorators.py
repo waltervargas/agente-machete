@@ -1,7 +1,7 @@
 """Tests for decorators — the data scientist API surface."""
 
 from machete.decorators import agent, get_meta, get_tool_schema, step, tool
-from machete.types import MacheteMeta, ResourceHint
+from machete.types import ResourceHint
 
 
 class TestToolDecorator:

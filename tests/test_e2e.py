@@ -6,7 +6,6 @@ Tests the complete flow: define agent → run locally → emit infra.
 import json
 from pathlib import Path
 
-from returns.io import IOSuccess
 
 from machete import agent, run, tool
 from machete.decorators import get_meta, get_tool_schema
@@ -32,29 +31,32 @@ class TestFullVerticalSlice:
             tools=[lookup],
             system_prompt="You research topics.",
         )
-        def researcher(question: str) -> str:
-            ...
+        def researcher(question: str) -> str: ...
 
         # Mock the LLM to call the tool then respond
-        provider = MockProvider(responses=[
-            LLMResponse(
-                message=LLMMessage(
-                    role=Role.ASSISTANT,
-                    content="",
-                    tool_calls=[ToolCall(id="tc1", name="lookup", arguments={"topic": "Python"})],
+        provider = MockProvider(
+            responses=[
+                LLMResponse(
+                    message=LLMMessage(
+                        role=Role.ASSISTANT,
+                        content="",
+                        tool_calls=[
+                            ToolCall(id="tc1", name="lookup", arguments={"topic": "Python"})
+                        ],
+                    ),
+                    model="mock",
+                    stop_reason="tool_use",
                 ),
-                model="mock",
-                stop_reason="tool_use",
-            ),
-            LLMResponse(
-                message=LLMMessage(
-                    role=Role.ASSISTANT,
-                    content="Python is a programming language.",
+                LLMResponse(
+                    message=LLMMessage(
+                        role=Role.ASSISTANT,
+                        content="Python is a programming language.",
+                    ),
+                    model="mock",
+                    stop_reason="end_turn",
                 ),
-                model="mock",
-                stop_reason="end_turn",
-            ),
-        ])
+            ]
+        )
 
         result = run(researcher, "Tell me about Python", provider=provider)
         assert result == "Python is a programming language."
@@ -99,8 +101,7 @@ class TestFullVerticalSlice:
             pass
 
         @agent(name="a", tools=[t])
-        def a(q: str) -> str:
-            ...
+        def a(q: str) -> str: ...
 
         meta = get_meta(a)
         assert meta is not None

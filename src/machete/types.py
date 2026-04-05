@@ -18,6 +18,7 @@ from pydantic import BaseModel
 # LLM message types
 # ---------------------------------------------------------------------------
 
+
 class Role(str, Enum):
     SYSTEM = "system"
     USER = "user"
@@ -27,6 +28,7 @@ class Role(str, Enum):
 
 class ToolCall(BaseModel):
     """An LLM-requested tool invocation."""
+
     id: str
     name: str
     arguments: dict[str, Any]
@@ -34,6 +36,7 @@ class ToolCall(BaseModel):
 
 class LLMMessage(BaseModel):
     """A single message in a conversation."""
+
     role: Role
     content: str = ""
     tool_calls: list[ToolCall] = []
@@ -43,6 +46,7 @@ class LLMMessage(BaseModel):
 
 class LLMResponse(BaseModel):
     """Response from an LLM provider."""
+
     message: LLMMessage
     usage: dict[str, int] = {}
     model: str = ""
@@ -53,8 +57,10 @@ class LLMResponse(BaseModel):
 # Agent configuration
 # ---------------------------------------------------------------------------
 
+
 class AgentConfig(BaseModel):
     """Declarative agent configuration — what a data scientist specifies."""
+
     name: str
     description: str = ""
     model: str = "claude-sonnet-4-20250514"
@@ -68,9 +74,11 @@ class AgentConfig(BaseModel):
 # Error algebra — sum type of all agent errors
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class LLMError:
     """LLM provider returned an error."""
+
     message: str
     provider: str = ""
     status_code: int | None = None
@@ -79,6 +87,7 @@ class LLMError:
 @dataclass(frozen=True)
 class ToolError:
     """A tool invocation failed."""
+
     tool_name: str
     message: str
     original: Exception | None = None
@@ -87,6 +96,7 @@ class ToolError:
 @dataclass(frozen=True)
 class ValidationError:
     """Input or output validation failed."""
+
     message: str
     details: dict[str, Any] = field(default_factory=dict)
 
@@ -94,6 +104,7 @@ class ValidationError:
 @dataclass(frozen=True)
 class PipelineError:
     """Pipeline composition or execution error."""
+
     message: str
     step_name: str = ""
 
@@ -106,8 +117,10 @@ AgentError = LLMError | ToolError | ValidationError | PipelineError
 # Tool Protocol — the weak typeclass for tools
 # ---------------------------------------------------------------------------
 
+
 class ToolParameter(BaseModel):
     """JSON Schema-compatible parameter description."""
+
     name: str
     type: str
     description: str = ""
@@ -138,8 +151,10 @@ class ToolSpec(Protocol):
 # Metadata tag — attached by decorators for infra analysis
 # ---------------------------------------------------------------------------
 
+
 class ResourceHint(str, Enum):
     """Hints the infra analyzer uses to infer cloud resources."""
+
     LAMBDA = "lambda"
     API_GATEWAY = "api_gateway"
     SQS = "sqs"
@@ -151,6 +166,7 @@ class ResourceHint(str, Enum):
 @dataclass(frozen=True)
 class MacheteMeta:
     """Metadata attached to decorated objects via __machete_meta__."""
+
     kind: str  # "agent", "tool", or "step"
     name: str
     config: AgentConfig | None = None

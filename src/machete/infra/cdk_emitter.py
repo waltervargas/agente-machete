@@ -46,7 +46,9 @@ def emit_cdk_json(graph: ResourceGraph, stack_name: str = "MacheteStack") -> dic
         if node.type == ResourceType.API_GATEWAY:
             lid = _cfn_logical_id(node.id)
             outputs[f"{lid}Url"] = {
-                "Value": {"Fn::Sub": f"https://${{{lid}}}.execute-api.${{AWS::Region}}.amazonaws.com/prod"},
+                "Value": {
+                    "Fn::Sub": f"https://${{{lid}}}.execute-api.${{AWS::Region}}.amazonaws.com/prod"
+                },
                 "Description": f"URL for {node.name}",
             }
 
@@ -85,8 +87,8 @@ def emit_cdk_app(graph: ResourceGraph, stack_name: str = "MacheteStack") -> str:
         "",
         "",
         f"class {_class_name(stack_name)}(Stack):",
-        f'    def __init__(self, scope: Construct, id: str, **kwargs) -> None:',
-        '        super().__init__(scope, id, **kwargs)',
+        "    def __init__(self, scope: Construct, id: str, **kwargs) -> None:",
+        "        super().__init__(scope, id, **kwargs)",
         "",
     ]
 
@@ -115,12 +117,14 @@ def emit_cdk_app(graph: ResourceGraph, stack_name: str = "MacheteStack") -> str:
             lines.append("")
 
     # App boilerplate
-    lines.extend([
-        "",
-        "app = cdk.App()",
-        f'{_class_name(stack_name)}(app, "{stack_name}")',
-        "app.synth()",
-    ])
+    lines.extend(
+        [
+            "",
+            "app = cdk.App()",
+            f'{_class_name(stack_name)}(app, "{stack_name}")',
+            "app.synth()",
+        ]
+    )
 
     return "\n".join(lines)
 
@@ -128,6 +132,7 @@ def emit_cdk_app(graph: ResourceGraph, stack_name: str = "MacheteStack") -> str:
 # ---------------------------------------------------------------------------
 # CloudFormation resource mappers
 # ---------------------------------------------------------------------------
+
 
 def _node_to_cloudformation(node: ResourceNode) -> dict[str, Any] | None:
     match node.type:
@@ -179,11 +184,17 @@ def _node_to_cloudformation(node: ResourceNode) -> dict[str, Any] | None:
                     "RoleName": node.name,
                     "AssumeRolePolicyDocument": {
                         "Version": "2012-10-17",
-                        "Statement": [{
-                            "Effect": "Allow",
-                            "Principal": {"Service": node.properties.get("assume_role_service", "lambda.amazonaws.com")},
-                            "Action": "sts:AssumeRole",
-                        }],
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {
+                                    "Service": node.properties.get(
+                                        "assume_role_service", "lambda.amazonaws.com"
+                                    )
+                                },
+                                "Action": "sts:AssumeRole",
+                            }
+                        ],
                     },
                 },
             }
@@ -206,6 +217,7 @@ def _cfn_logical_id(node_id: str) -> str:
 def _class_name(stack_name: str) -> str:
     # Split on non-alpha boundaries, preserving existing CamelCase
     import re
+
     parts = re.split(r"[-_ ]+", stack_name)
     return "".join(p[0].upper() + p[1:] if p else "" for p in parts)
 
@@ -213,6 +225,7 @@ def _class_name(stack_name: str) -> str:
 # ---------------------------------------------------------------------------
 # CDK construct emitters (for emit_cdk_app)
 # ---------------------------------------------------------------------------
+
 
 def _emit_lambda(node: ResourceNode) -> list[str]:
     var = _var_name(node.id)
@@ -223,12 +236,12 @@ def _emit_lambda(node: ResourceNode) -> list[str]:
         f"            self, '{node.id}',",
         f"            function_name='{node.name}',",
         f"            handler='{props.get('handler', 'index.handler')}',",
-        f"            runtime=_lambda.Runtime.PYTHON_3_11,",
+        "            runtime=_lambda.Runtime.PYTHON_3_11,",
         f"            timeout=Duration.seconds({props.get('timeout', 60)}),",
         f"            memory_size={props.get('memory', 256)},",
         f"            environment={env_str},",
-        f"            code=_lambda.Code.from_asset('lambda_code'),",
-        f"        )",
+        "            code=_lambda.Code.from_asset('lambda_code'),",
+        "        )",
     ]
 
 
@@ -239,18 +252,20 @@ def _emit_api_gateway(node: ResourceNode, graph: ResourceGraph) -> list[str]:
         f"            self, '{node.id}',",
         f"            rest_api_name='{node.name}',",
         f"            description='{node.properties.get('description', '')}',",
-        f"        )",
+        "        )",
     ]
     # Connect to Lambda targets
     for dep in graph.get_dependencies(node.id):
         if dep.type == ResourceType.LAMBDA:
             dep_var = _var_name(dep.id)
-            lines.extend([
-                f"        self.{var}.root.add_method(",
-                f"            'POST',",
-                f"            apigw.LambdaIntegration(self.{dep_var}),",
-                f"        )",
-            ])
+            lines.extend(
+                [
+                    f"        self.{var}.root.add_method(",
+                    "            'POST',",
+                    f"            apigw.LambdaIntegration(self.{dep_var}),",
+                    "        )",
+                ]
+            )
     return lines
 
 
@@ -261,17 +276,19 @@ def _emit_sqs(node: ResourceNode, graph: ResourceGraph) -> list[str]:
         f"            self, '{node.id}',",
         f"            queue_name='{node.name}',",
         f"            visibility_timeout=Duration.seconds({node.properties.get('visibility_timeout', 30)}),",
-        f"        )",
+        "        )",
     ]
     # Connect as event source for Lambda
     for dep in graph.get_dependencies(node.id):
         if dep.type == ResourceType.LAMBDA:
             dep_var = _var_name(dep.id)
-            lines.extend([
-                f"        self.{dep_var}.add_event_source(",
-                f"            event_sources.SqsEventSource(self.{var}),",
-                f"        )",
-            ])
+            lines.extend(
+                [
+                    f"        self.{dep_var}.add_event_source(",
+                    f"            event_sources.SqsEventSource(self.{var}),",
+                    "        )",
+                ]
+            )
     return lines
 
 
@@ -282,14 +299,12 @@ def _emit_eventbridge(node: ResourceNode, graph: ResourceGraph) -> list[str]:
         f"        self.{var} = events.Rule(",
         f"            self, '{node.id}',",
         f"            schedule=events.Schedule.expression('{schedule}'),",
-        f"        )",
+        "        )",
     ]
     for dep in graph.get_dependencies(node.id):
         if dep.type == ResourceType.LAMBDA:
             dep_var = _var_name(dep.id)
-            lines.append(
-                f"        self.{var}.add_target(targets.LambdaFunction(self.{dep_var}))"
-            )
+            lines.append(f"        self.{var}.add_target(targets.LambdaFunction(self.{dep_var}))")
     return lines
 
 

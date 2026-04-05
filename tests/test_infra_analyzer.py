@@ -13,8 +13,8 @@ class TestAnalyzeModule:
         api_nodes = [n for n in graph.nodes.values() if n.type == ResourceType.API_GATEWAY]
 
         assert len(lambda_nodes) >= 1  # At least the agent Lambda
-        assert len(api_nodes) == 1     # One API Gateway
-        assert len(graph.edges) > 0    # At least API GW → Lambda edge
+        assert len(api_nodes) == 1  # One API Gateway
+        assert len(graph.edges) > 0  # At least API GW → Lambda edge
 
     def test_agent_has_api_gateway(self) -> None:
         graph = analyze_module("examples.simple_agent")
@@ -25,7 +25,8 @@ class TestAnalyzeModule:
     def test_tools_have_lambdas(self) -> None:
         graph = analyze_module("examples.simple_agent")
         tool_lambdas = [
-            n for n in graph.nodes.values()
+            n
+            for n in graph.nodes.values()
             if n.type == ResourceType.LAMBDA and n.id.startswith("tool-")
         ]
         assert len(tool_lambdas) == 2  # add + multiply
