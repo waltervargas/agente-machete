@@ -1,5 +1,12 @@
 """Tests for CDK synthesis — in-process via aws_cdk, no subprocess."""
 
+import pytest
+
+try:
+    import aws_cdk  # noqa: F401
+except ImportError:
+    pytest.skip("aws-cdk-lib not installed", allow_module_level=True)
+
 from machete.infra.analyzer import analyze_module
 from machete.infra.cdk_emitter import get_template, synthesize
 

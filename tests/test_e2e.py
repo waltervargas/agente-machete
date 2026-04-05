@@ -5,12 +5,21 @@ Tests the complete flow: define agent -> run locally -> synthesize infra.
 
 from pathlib import Path
 
+import pytest
+
 from machete import agent, run, tool
 from machete.decorators import get_meta, get_tool_schema
-from machete.infra.analyzer import analyze_module
-from machete.infra.cdk_emitter import get_template, synthesize
 from machete.llm.protocol import MockProvider
 from machete.types import LLMMessage, LLMResponse, Role, ToolCall
+
+
+def _has_aws_cdk() -> bool:
+    try:
+        import aws_cdk  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
 
 
 class TestFullVerticalSlice:
@@ -58,8 +67,12 @@ class TestFullVerticalSlice:
         result = run(researcher, "Tell me about Python", provider=provider)
         assert result == "Python is a programming language."
 
+    @pytest.mark.skipif(not _has_aws_cdk(), reason="aws-cdk-lib not installed")
     def test_synthesize_from_example(self, tmp_path: Path) -> None:
         """Step 2: Analyze the example module and synthesize via CDK."""
+        from machete.infra.analyzer import analyze_module
+        from machete.infra.cdk_emitter import get_template, synthesize
+
         graph = analyze_module("examples.simple_agent")
         assembly = synthesize(graph, outdir=tmp_path, stack_name="CalcStack")
         template = get_template(assembly, "CalcStack")
