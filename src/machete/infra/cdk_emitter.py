@@ -60,8 +60,18 @@ def emit_cdk_json(graph: ResourceGraph, stack_name: str = "MacheteStack") -> dic
     }
 
 
-def emit_cdk_app(graph: ResourceGraph, stack_name: str = "MacheteStack") -> str:
+def emit_cdk_app(
+    graph: ResourceGraph,
+    stack_name: str = "MacheteStack",
+    code_asset_path: str = "lambda_code",
+) -> str:
     """Emit a CDK app Python file that can be run with `cdk synth`.
+
+    Args:
+        graph: The infrastructure resource graph.
+        stack_name: Name of the CDK stack.
+        code_asset_path: Path to the Lambda code asset directory
+            (relative to the CDK app file or absolute).
 
     Returns the Python source code for a CDK app.
     """
@@ -95,7 +105,7 @@ def emit_cdk_app(graph: ResourceGraph, stack_name: str = "MacheteStack") -> str:
     # Emit Lambda functions
     for node in graph.nodes.values():
         if node.type == ResourceType.LAMBDA:
-            lines.extend(_emit_lambda(node))
+            lines.extend(_emit_lambda(node, code_asset_path))
             lines.append("")
 
     # Emit API Gateways
@@ -227,7 +237,7 @@ def _class_name(stack_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _emit_lambda(node: ResourceNode) -> list[str]:
+def _emit_lambda(node: ResourceNode, code_asset_path: str = "lambda_code") -> list[str]:
     var = _var_name(node.id)
     props = node.properties
     env_str = json.dumps(props.get("environment", {}))
@@ -240,7 +250,7 @@ def _emit_lambda(node: ResourceNode) -> list[str]:
         f"            timeout=Duration.seconds({props.get('timeout', 60)}),",
         f"            memory_size={props.get('memory', 256)},",
         f"            environment={env_str},",
-        "            code=_lambda.Code.from_asset('lambda_code'),",
+        f"            code=_lambda.Code.from_asset('{code_asset_path}'),",
         "        )",
     ]
 

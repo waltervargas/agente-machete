@@ -15,7 +15,10 @@ dependencies = [
 [project.optional-dependencies]
 anthropic = ["anthropic>=0.50"]
 openai = ["openai>=1.0"]
-infra = ["aws-cdk-lib>=2.170", "constructs>=10.0"]
+infra = [
+    "aws-cdk-lib>=2.170",
+    "constructs>=10.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
