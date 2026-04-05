@@ -2,7 +2,7 @@
 
 Usage:
     machete run <module> --input "..."     Run agent locally
-    machete synth <module>                 Emit CDK / CloudFormation
+    machete synth <module>                 Synthesize CDK / CloudFormation
     machete deploy <module>                Synth + deploy
     machete graph <module>                 Show inferred infra graph
 """
@@ -36,12 +36,9 @@ def main(argv: list[str] | None = None) -> None:
     run_p.add_argument("--verbose", "-v", action="store_true")
 
     # --- synth ---
-    synth_p = sub.add_parser("synth", help="Emit infrastructure (CloudFormation/CDK)")
+    synth_p = sub.add_parser("synth", help="Synthesize infrastructure (CloudFormation)")
     synth_p.add_argument("module", help="Python module path")
     synth_p.add_argument("--output", "-o", default="cdk.out", help="Output directory")
-    synth_p.add_argument(
-        "--format", "-f", default="cfn", choices=["cfn", "cdk"], help="Output format"
-    )
     synth_p.add_argument("--stack-name", default="MacheteStack", help="Stack name")
 
     # --- graph ---
@@ -49,7 +46,7 @@ def main(argv: list[str] | None = None) -> None:
     graph_p.add_argument("module", help="Python module path")
 
     # --- deploy ---
-    deploy_p = sub.add_parser("deploy", help="Synth + deploy (requires CDK)")
+    deploy_p = sub.add_parser("deploy", help="Synth + deploy (requires CDK CLI)")
     deploy_p.add_argument("module", help="Python module path")
     deploy_p.add_argument("--stack-name", default="MacheteStack")
 
@@ -81,20 +78,14 @@ def _cmd_run(args: Any) -> None:
 
 def _cmd_synth(args: Any) -> None:
     from machete.infra.analyzer import analyze_module
-    from machete.infra.cdk_emitter import emit_cdk_app, emit_cdk_json
-    from machete.infra.cdk_app import write_cdk_app, write_cfn_template
+    from machete.infra.cdk_emitter import get_template, synthesize
 
     graph = analyze_module(args.module)
+    assembly = synthesize(graph, outdir=args.output, stack_name=args.stack_name)
+    template = get_template(assembly, stack_name=args.stack_name)
 
-    if args.format == "cdk":
-        source = emit_cdk_app(graph, stack_name=args.stack_name)
-        path = write_cdk_app(source, output_dir=args.output)
-        print(f"CDK app written to: {path}")
-    else:
-        template = emit_cdk_json(graph, stack_name=args.stack_name)
-        path = write_cfn_template(template, output_dir=args.output)
-        print(f"CloudFormation template written to: {path}")
-        print(json.dumps(template, indent=2))
+    print(f"CloudAssembly written to: {assembly.directory}")
+    print(json.dumps(template, indent=2))
 
 
 def _cmd_graph(args: Any) -> None:
@@ -108,22 +99,20 @@ def _cmd_graph(args: Any) -> None:
 def _cmd_deploy(args: Any) -> None:
     import subprocess
 
-    # First synth
     from machete.infra.analyzer import analyze_module
-    from machete.infra.cdk_emitter import emit_cdk_app
-    from machete.infra.cdk_app import write_cdk_app
+    from machete.infra.cdk_app import scaffold_deploy_dir
 
     graph = analyze_module(args.module)
-    source = emit_cdk_app(graph, stack_name=args.stack_name)
-    app_path = write_cdk_app(source)
+    deploy_dir = scaffold_deploy_dir(graph, output_dir="cdk.out", stack_name=args.stack_name)
 
-    print(f"CDK app generated at: {app_path}")
+    print(f"CloudAssembly at: {deploy_dir}")
     print("Running: cdk deploy")
-    subprocess.run(["cdk", "deploy", "--app", f"python {app_path}"], check=True)
+    subprocess.run(["cdk", "deploy", "--app", str(deploy_dir)], check=True)
 
 
 def _find_agent(mod: Any, agent_name: str | None) -> Any:
     import inspect
+
     from machete.decorators import get_meta
 
     agents = []

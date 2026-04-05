@@ -1,23 +1,20 @@
 """End-to-end tests — the full vertical slice.
 
-Tests the complete flow: define agent → run locally → emit infra.
+Tests the complete flow: define agent -> run locally -> synthesize infra.
 """
 
-import json
 from pathlib import Path
-
 
 from machete import agent, run, tool
 from machete.decorators import get_meta, get_tool_schema
 from machete.infra.analyzer import analyze_module
-from machete.infra.cdk_app import write_cfn_template
-from machete.infra.cdk_emitter import emit_cdk_json
+from machete.infra.cdk_emitter import get_template, synthesize
 from machete.llm.protocol import MockProvider
 from machete.types import LLMMessage, LLMResponse, Role, ToolCall
 
 
 class TestFullVerticalSlice:
-    """Data scientist defines an agent → runs it → deploys it."""
+    """Data scientist defines an agent -> runs it -> deploys it."""
 
     def test_define_and_run_agent(self) -> None:
         """Step 1: Define an agent with tools and run it locally."""
@@ -61,19 +58,20 @@ class TestFullVerticalSlice:
         result = run(researcher, "Tell me about Python", provider=provider)
         assert result == "Python is a programming language."
 
-    def test_analyze_example_and_emit_cfn(self, tmp_path: Path) -> None:
-        """Step 2: Analyze the example module and emit CloudFormation."""
+    def test_synthesize_from_example(self, tmp_path: Path) -> None:
+        """Step 2: Analyze the example module and synthesize via CDK."""
         graph = analyze_module("examples.simple_agent")
-        template = emit_cdk_json(graph, stack_name="CalcStack")
+        assembly = synthesize(graph, outdir=tmp_path, stack_name="CalcStack")
+        template = get_template(assembly, "CalcStack")
 
-        # Write and verify it's valid JSON
-        path = write_cfn_template(template, output_dir=str(tmp_path))
-        assert path.exists()
+        assert "Resources" in template
+        assert len(template["Resources"]) > 0
 
-        loaded = json.loads(path.read_text())
-        assert loaded["AWSTemplateFormatVersion"] == "2010-09-09"
-        assert "CalcStack" in loaded["Description"]
-        assert len(loaded["Resources"]) > 0
+        # Should have Lambda functions for agent + tools
+        lambdas = [
+            v for v in template["Resources"].values() if v.get("Type") == "AWS::Lambda::Function"
+        ]
+        assert len(lambdas) == 3
 
     def test_tool_schema_for_llm(self) -> None:
         """Verify tool schemas are LLM-compatible."""

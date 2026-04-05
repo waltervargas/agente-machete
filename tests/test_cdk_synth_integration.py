@@ -1,94 +1,59 @@
-"""Integration test: emitter → cdk synth → CloudFormation templates.
+"""Integration test: in-process CDK synthesis produces valid CloudFormation.
 
-This test runs *outside* the codebase (in /tmp) to verify the full
-Infrastructure From Code pipeline:
+This test runs entirely in /tmp to verify the full Infrastructure
+From Code pipeline:
 
-  1. Analyze decorated agent code → ResourceGraph
-  2. Scaffold a CDK project from the graph
-  3. Run `cdk synth` against it
-  4. Assert the resulting CloudFormation template contains the
+  1. Analyze decorated agent code -> ResourceGraph
+  2. Synthesize via CDK in-process -> CloudAssembly
+  3. Assert the resulting CloudFormation template contains the
      expected resources (Lambda, API Gateway, IAM roles)
 
-Requires: aws-cdk-lib, constructs, and the `cdk` CLI.
+No subprocess calls, no cdk CLI — pure in-process synthesis via jsii.
+
+Requires: aws-cdk-lib, constructs (pip install agente-machete[infra])
 """
 
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from machete.infra.analyzer import analyze_module
-from machete.infra.cdk_app import scaffold_cdk_project
+from machete.infra.cdk_emitter import get_template, synthesize
 
-# Skip the entire module if cdk CLI is not available
-pytestmark = pytest.mark.skipif(
-    shutil.which("cdk") is None,
-    reason="cdk CLI not installed",
-)
+# Skip if aws_cdk is not installed
+try:
+    import aws_cdk  # noqa: F401
+except ImportError:
+    pytest.skip("aws-cdk-lib not installed", allow_module_level=True)
 
 
 @pytest.fixture
-def cdk_project(tmp_path: Path) -> Path:
-    """Scaffold a CDK project in /tmp from the simple_agent example."""
+def synth_result(tmp_path: Path):
+    """Synthesize the simple_agent example in /tmp and return (assembly, template)."""
     graph = analyze_module("examples.simple_agent")
-    scaffold_cdk_project(graph, tmp_path, stack_name="MacheteTestStack")
-    return tmp_path
-
-
-def _run_cdk_synth(project_dir: Path) -> dict:
-    """Run `cdk synth` and return the parsed CloudFormation template."""
-    # Determine the uv project root (this repo)
-    repo_root = Path(__file__).resolve().parent.parent
-
-    result = subprocess.run(
-        [
-            "cdk",
-            "synth",
-            "--app",
-            f"uv run --project {repo_root} python3 app.py",
-            "--no-staging",
-            "--output",
-            str(project_dir / "cdk.out"),
-        ],
-        cwd=project_dir,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    assert result.returncode == 0, (
-        f"cdk synth failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
-    )
-
-    # cdk synth writes the template to cdk.out/MacheteTestStack.template.json
-    template_path = project_dir / "cdk.out" / "MacheteTestStack.template.json"
-    assert template_path.exists(), (
-        f"Template not found at {template_path}. "
-        f"cdk.out contents: {list((project_dir / 'cdk.out').iterdir())}"
-    )
-    return json.loads(template_path.read_text())
+    assembly = synthesize(graph, outdir=tmp_path, stack_name="MacheteTestStack")
+    template = get_template(assembly, "MacheteTestStack")
+    return assembly, template
 
 
 class TestCdkSynthIntegration:
-    """Verify that the emitted CDK app produces valid CloudFormation."""
+    """Verify that in-process CDK synthesis produces valid CloudFormation."""
 
-    def test_synth_succeeds(self, cdk_project: Path) -> None:
-        """cdk synth exits 0 and produces a template."""
-        template = _run_cdk_synth(cdk_project)
+    def test_synth_produces_template(self, synth_result) -> None:
+        assembly, template = synth_result
         assert "Resources" in template
         assert len(template["Resources"]) > 0
 
-    def test_lambda_functions_created(self, cdk_project: Path) -> None:
+    def test_lambda_functions_created(self, synth_result) -> None:
         """Each agent + tool gets a Lambda function."""
-        template = _run_cdk_synth(cdk_project)
+        _, template = synth_result
         lambdas = {
             k: v for k, v in template["Resources"].items() if v["Type"] == "AWS::Lambda::Function"
         }
 
-        # 3 Lambdas: calculator agent + add tool + multiply tool
         assert len(lambdas) == 3
 
         function_names = {v["Properties"]["FunctionName"] for v in lambdas.values()}
@@ -96,18 +61,18 @@ class TestCdkSynthIntegration:
         assert "add-handler" in function_names
         assert "multiply-handler" in function_names
 
-    def test_lambda_runtimes(self, cdk_project: Path) -> None:
+    def test_lambda_runtimes(self, synth_result) -> None:
         """All Lambdas use Python 3.11."""
-        template = _run_cdk_synth(cdk_project)
+        _, template = synth_result
         lambdas = [
             v for v in template["Resources"].values() if v["Type"] == "AWS::Lambda::Function"
         ]
         for fn in lambdas:
             assert fn["Properties"]["Runtime"] == "python3.11"
 
-    def test_lambda_environment_variables(self, cdk_project: Path) -> None:
+    def test_lambda_environment_variables(self, synth_result) -> None:
         """Agent Lambda has MACHETE_AGENT, tool Lambdas have MACHETE_TOOL."""
-        template = _run_cdk_synth(cdk_project)
+        _, template = synth_result
         lambdas = {
             v["Properties"]["FunctionName"]: v["Properties"]
             for v in template["Resources"].values()
@@ -124,9 +89,9 @@ class TestCdkSynthIntegration:
         multiply_env = lambdas["multiply-handler"]["Environment"]["Variables"]
         assert multiply_env["MACHETE_TOOL"] == "multiply"
 
-    def test_api_gateway_created(self, cdk_project: Path) -> None:
+    def test_api_gateway_created(self, synth_result) -> None:
         """An API Gateway REST API is created for the agent."""
-        template = _run_cdk_synth(cdk_project)
+        _, template = synth_result
         apigws = {
             k: v
             for k, v in template["Resources"].items()
@@ -136,9 +101,9 @@ class TestCdkSynthIntegration:
         apigw = list(apigws.values())[0]
         assert apigw["Properties"]["Name"] == "calculator-api"
 
-    def test_api_gateway_has_post_method(self, cdk_project: Path) -> None:
+    def test_api_gateway_has_post_method(self, synth_result) -> None:
         """The API Gateway has a POST method wired to the agent Lambda."""
-        template = _run_cdk_synth(cdk_project)
+        _, template = synth_result
         methods = {
             k: v
             for k, v in template["Resources"].items()
@@ -149,14 +114,12 @@ class TestCdkSynthIntegration:
         assert method["Properties"]["HttpMethod"] == "POST"
         assert method["Properties"]["Integration"]["Type"] == "AWS_PROXY"
 
-    def test_iam_roles_created(self, cdk_project: Path) -> None:
+    def test_iam_roles_created(self, synth_result) -> None:
         """CDK auto-generates IAM roles with Lambda execution policies."""
-        template = _run_cdk_synth(cdk_project)
+        _, template = synth_result
         roles = {k: v for k, v in template["Resources"].items() if v["Type"] == "AWS::IAM::Role"}
-        # At least one role per Lambda (3) + one for API GW CloudWatch
         assert len(roles) >= 3
 
-        # All Lambda roles should have the basic execution policy
         lambda_roles = [
             v
             for v in roles.values()
@@ -167,16 +130,21 @@ class TestCdkSynthIntegration:
         ]
         assert len(lambda_roles) == 3
 
-    def test_template_in_tmp_not_in_repo(self, cdk_project: Path) -> None:
-        """Verify the CDK project was created in /tmp, not in the repo."""
-        assert str(cdk_project).startswith("/tmp")
-        assert not str(cdk_project).startswith("/home/user/agente-machete")
+    def test_output_in_tmp(self, synth_result) -> None:
+        """Verify the CloudAssembly was created in /tmp, not in the repo."""
+        assembly, _ = synth_result
+        assert str(assembly.directory).startswith("/tmp")
 
-    def test_scaffold_structure(self, cdk_project: Path) -> None:
-        """Verify the scaffolded project has the expected files."""
-        assert (cdk_project / "app.py").exists()
-        assert (cdk_project / "cdk.json").exists()
-        assert (cdk_project / "lambda_code" / "index.py").exists()
+    def test_cloud_assembly_structure(self, synth_result) -> None:
+        """CloudAssembly has the expected stack artifact."""
+        assembly, _ = synth_result
+        assert len(assembly.stacks) == 1
+        stack = assembly.stacks[0]
+        assert stack.stack_name == "MacheteTestStack"
 
-        cdk_json = json.loads((cdk_project / "cdk.json").read_text())
-        assert "app" in cdk_json
+    def test_template_is_valid_json(self, synth_result) -> None:
+        """Template round-trips through JSON serialization."""
+        _, template = synth_result
+        serialized = json.dumps(template, indent=2)
+        roundtripped = json.loads(serialized)
+        assert roundtripped == template
