@@ -1,5 +1,7 @@
 # Agente Machete
 
+**Three commands from decorated Python to production AWS.**
+
 Define agents with decorators. Run locally. Deploy to AWS. Zero infra config.
 
 [![CI](https://github.com/waltervargas/agente-machete/actions/workflows/ci.yml/badge.svg)](https://github.com/waltervargas/agente-machete/actions/workflows/ci.yml)
@@ -36,22 +38,61 @@ print(answer)
 That's it. No chains, no graphs, no YAML. The framework handles the agentic loop (LLM call, tool execution, repeat) and infers your cloud infrastructure from the decorators.
 
 ```bash
-$ machete synth my_agent.py
-# CloudAssembly written to: cdk.out
-# => Lambda functions, API Gateway, IAM roles — all generated from your @agent and @tool decorators
+$ machete synth my_agent.py     # generates Lambda, API Gateway, IAM — from your decorators
+$ machete deploy my_agent.py    # deploys to AWS
 ```
 
+## Try It in 30 Seconds
+
+No API key needed. Copy-paste this into a Python file or Jupyter notebook:
+
+```python
+from machete import agent, tool, run
+from machete.llm import MockProvider
+
+@tool(name="add", description="Add two numbers")
+def add(a: int, b: int) -> int:
+    return a + b
+
+@tool(name="multiply", description="Multiply two numbers")
+def multiply(a: int, b: int) -> int:
+    return a * b
+
+@agent(
+    name="calculator",
+    model="claude-sonnet-4-20250514",
+    tools=[add, multiply],
+    system_prompt="You are a calculator. Use tools to compute answers.",
+)
+def calculator(question: str) -> str:
+    """Answer math questions."""
+    ...
+
+# MockProvider returns canned responses — great for testing and prototyping
+answer = run(calculator, "What is 7 * 8 + 3?")
+print(answer)
+```
+
+```bash
+pip install agente-machete && python my_agent.py
+```
+
+Swap `MockProvider` for `AnthropicProvider()` or `OpenAIProvider()` when you're ready for real LLM calls.
+
 ## Why Machete?
+
+Most agent frameworks stop at "run my agent." Machete goes further: your decorated Python functions **are** your infrastructure definition.
 
 | | Machete | LangChain | CrewAI |
 |---|---|---|---|
 | **Define agents** | `@agent` decorator | Chain/Graph classes | Agent/Task/Crew classes |
-| **Error handling** | Monadic (`IOResult`) — composable, typed | try/except | try/except |
-| **Infrastructure** | Inferred from decorators, CDK synthesis | Manual (Terraform, etc.) | Manual |
+| **Error handling** | Monadic (`IOResult`) -- composable, typed | try/except | try/except |
+| **Infrastructure** | Inferred from decorators | Manual (Terraform, etc.) | Manual |
+| **Testing** | Built-in `MockProvider` | Manual mocking | Manual mocking |
 | **Core deps** | 2 (returns + pydantic) | 15+ | 10+ |
-| **LLM lock-in** | None — Protocol-based | Partial | Partial |
+| **LLM lock-in** | None -- Protocol-based (PEP 544) | Partial | Partial |
 
-**Infrastructure From Code** is the key differentiator. Other frameworks stop at "run my agent." Machete goes from decorated Python functions to production AWS infrastructure (Lambda + API Gateway + SQS + EventBridge) with a single command. No Terraform. No SAM. No Serverless Framework.
+**Infrastructure From Code** is the key differentiator. Machete goes from decorated Python functions to production AWS infrastructure (Lambda + API Gateway + SQS + EventBridge) with a single command. No Terraform. No SAM. No Serverless Framework.
 
 ## Installation
 
@@ -111,7 +152,7 @@ print(answer)  # "59"
 Or from the CLI:
 
 ```bash
-machete run my_agent --input "What is 7 * 8 + 3?" --provider anthropic
+machete run examples.simple_agent --input "What is 7 * 8 + 3?" --provider anthropic
 ```
 
 ### 3. Deploy to AWS
@@ -126,6 +167,33 @@ machete synth my_agent
 # Deploy
 machete deploy my_agent
 ```
+
+## How It Works
+
+Machete's execution model has two paths from the same code:
+
+**Local execution** -- the agentic loop:
+
+```
+You call run(agent, input)
+  → Pipeline sends messages to LLM provider
+    → LLM returns tool calls
+      → Pipeline executes your @tool functions
+        → Results fed back to LLM
+          → Repeat until LLM responds with text (no more tool calls)
+```
+
+**Cloud deployment** -- infrastructure inference:
+
+```
+machete synth my_agent
+  → Analyzer scans your module for @agent / @tool / @step decorators
+    → Reads __machete_meta__ attached by each decorator
+      → Builds a ResourceGraph (DAG of cloud resources)
+        → CDK synthesizes real CloudFormation (Lambda, API Gateway, SQS, etc.)
+```
+
+The same decorators power both paths. Your `@tool` functions run locally during development and become Lambda functions in production.
 
 ## CLI
 
@@ -147,7 +215,7 @@ Machete analyzes your decorated code and infers what cloud resources you need:
 | `@tool(schedule="rate(1 hour)")` | Lambda + EventBridge rule |
 | `@tool(queue=True)` | Lambda + SQS queue |
 
-The synthesis happens **in-process** via the AWS CDK Python SDK and jsii — no subprocess calls, no string templating, no hand-rolled CloudFormation. Machete creates real CDK constructs (`_lambda.Function`, `apigw.RestApi`, `sqs.Queue`) and lets CDK handle IAM roles, permissions, deployment stages, and all the details.
+The synthesis happens **in-process** via the AWS CDK Python SDK and jsii -- no subprocess calls, no string templating, no hand-rolled CloudFormation. Machete creates real CDK constructs (`_lambda.Function`, `apigw.RestApi`, `sqs.Queue`) and lets CDK handle IAM roles, permissions, deployment stages, and all the details.
 
 ```bash
 $ machete graph examples.simple_agent
@@ -181,6 +249,152 @@ template = get_template(assembly)
 # template is a dict with the full CloudFormation template
 ```
 
+## LLM Providers
+
+Providers are Protocol-based (PEP 544) -- swap with one line, no inheritance required.
+
+### Anthropic (Claude)
+
+```python
+from machete.llm import AnthropicProvider
+
+provider = AnthropicProvider()  # uses ANTHROPIC_API_KEY env var
+```
+
+### OpenAI
+
+```python
+from machete.llm import OpenAIProvider
+
+provider = OpenAIProvider()  # uses OPENAI_API_KEY env var
+```
+
+### Mock (testing)
+
+```python
+from machete.llm import MockProvider
+from machete.types import LLMMessage, LLMResponse, Role
+
+provider = MockProvider(responses=[
+    LLMResponse(
+        message=LLMMessage(role=Role.ASSISTANT, content="The answer is 42."),
+        model="mock",
+    ),
+])
+```
+
+### Custom provider
+
+Any object with a `complete()` method works -- no base class needed:
+
+```python
+class MyProvider:
+    def complete(self, messages, tools=None, *, model="", temperature=0.0, max_tokens=4096):
+        # Call your LLM, return IOResult[LLMResponse, AgentError]
+        ...
+
+# MyProvider satisfies LLMProvider via structural subtyping
+run(my_agent, "hello", provider=MyProvider())
+```
+
+## Middleware
+
+The pipeline supports middleware for cross-cutting concerns like logging, tracing, and caching. Middleware wraps each pipeline step:
+
+```python
+from machete import run
+from machete.pipeline import logging_middleware
+
+answer = run(calculator, "What is 2 + 3?", provider=provider, middleware=[logging_middleware])
+# [a1b2c3] step executing (messages=2)
+# [a1b2c3] step succeeded
+```
+
+Write your own middleware -- it's just a function that wraps a step:
+
+```python
+def timing_middleware(step):
+    def wrapper(ctx):
+        start = time.time()
+        result = step(ctx)
+        print(f"Step took {time.time() - start:.2f}s")
+        return result
+    return wrapper
+
+answer = run(calculator, "What is 2 + 3?", provider=provider, middleware=[timing_middleware])
+```
+
+## Error Handling
+
+Machete uses monadic error handling via the `returns` library. Every operation returns `IOResult[T, AgentError]` -- errors compose and short-circuit without try/except:
+
+```python
+from machete import run_result
+
+# run_result returns the raw IOResult for monadic composition
+result = run_result(calculator, "What is 2 + 3?", provider=provider)
+
+# Pattern match on success/failure
+from returns.io import IOSuccess, IOFailure
+
+match result:
+    case IOSuccess(ctx):
+        print("Success:", get_last_response(ctx))
+    case IOFailure(error):
+        print("Error:", error)
+```
+
+The error algebra covers all failure modes:
+
+| Error Type | When |
+|---|---|
+| `LLMError` | Provider call fails (rate limit, auth, network) |
+| `ToolError` | Tool execution raises an exception |
+| `ValidationError` | Invalid input or configuration |
+| `PipelineError` | Pipeline-level failure (max iterations, etc.) |
+
+Tool errors are special: they're reported back to the LLM as tool results, giving the agent a chance to recover. Only LLM and pipeline errors short-circuit execution.
+
+## Testing
+
+Machete is designed for testability. The `MockProvider` lets you write deterministic tests without API calls:
+
+```python
+from machete import run
+from machete.llm import MockProvider
+from machete.types import LLMMessage, LLMResponse, ToolCall, Role
+
+# Test that your agent calls the right tools
+provider = MockProvider(responses=[
+    # First response: agent decides to call "add" tool
+    LLMResponse(
+        message=LLMMessage(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[ToolCall(id="1", name="add", arguments={"a": 2, "b": 3})],
+        ),
+        model="mock",
+    ),
+    # Second response: agent returns final answer
+    LLMResponse(
+        message=LLMMessage(role=Role.ASSISTANT, content="The answer is 5."),
+        model="mock",
+    ),
+])
+
+answer = run(calculator, "What is 2 + 3?", provider=provider)
+assert answer == "The answer is 5."
+```
+
+You can also pass a function for dynamic responses:
+
+```python
+provider = MockProvider(response_fn=lambda messages, **kw: LLMResponse(
+    message=LLMMessage(role=Role.ASSISTANT, content=f"Got {len(messages)} messages"),
+    model="mock",
+))
+```
+
 ## Architecture
 
 ```
@@ -208,64 +422,67 @@ template = get_template(assembly)
 
 **Layers:**
 
-- **Decorators** (`@agent`, `@tool`, `@step`) — the surface API. Attach metadata for the pipeline and infra analyzer.
-- **Pipeline** — the agentic loop. Calls the LLM, executes tools, feeds results back, repeats until done. Supports middleware.
-- **Monads** — `AgentResult[T] = IOResult[T, AgentError]`. Errors short-circuit. Side-effects are tracked. Composition via Kleisli arrows.
-- **LLM Providers** — Protocol-based (PEP 544). Swap providers with one line. No inheritance required.
-- **Infra** — Analyzer reads decorator metadata, builds a ResourceGraph, synthesizes CDK constructs in-process.
+- **Decorators** (`@agent`, `@tool`, `@step`) -- the surface API. Attach metadata for the pipeline and infra analyzer.
+- **Pipeline** -- the agentic loop. Calls the LLM, executes tools, feeds results back, repeats until done. Supports middleware.
+- **Monads** -- `AgentResult[T] = IOResult[T, AgentError]`. Errors short-circuit. Side-effects are tracked. Composition via Kleisli arrows.
+- **LLM Providers** -- Protocol-based (PEP 544). Swap providers with one line. No inheritance required.
+- **Infra** -- Analyzer reads decorator metadata, builds a ResourceGraph, synthesizes CDK constructs in-process.
 
-## LLM Providers
+## Advanced Features
 
-### Anthropic (Claude)
+### Async execution
 
 ```python
-from machete.llm import AnthropicProvider
+from machete import run_async
 
-provider = AnthropicProvider()  # uses ANTHROPIC_API_KEY env var
-# or
-provider = AnthropicProvider(api_key="sk-ant-...")
+answer = await run_async(calculator, "What is 2 + 3?", provider=provider)
 ```
 
-### OpenAI
+### Tool lifecycle hooks
+
+Tools can define setup and teardown logic:
 
 ```python
-from machete.llm.protocol import OpenAIProvider
+@tool(description="Query a database")
+def query_db(sql: str) -> str:
+    return db.execute(sql)
 
-provider = OpenAIProvider()  # uses OPENAI_API_KEY env var
+query_db.__machete_init__ = lambda: db.connect()
+query_db.__machete_cleanup__ = lambda: db.close()
 ```
 
-### Mock (testing)
+The pipeline calls `__machete_init__()` before first use and `__machete_cleanup__()` after completion.
+
+### Scheduled tools and queues
 
 ```python
-from machete.llm import MockProvider
-from machete.types import LLMMessage, LLMResponse, Role
+@tool(description="Sync data every hour", schedule="rate(1 hour)")
+def sync_data() -> str:
+    return fetch_and_store()
 
-provider = MockProvider(responses=[
-    LLMResponse(
-        message=LLMMessage(role=Role.ASSISTANT, content="Hello!"),
-        model="mock",
-    ),
-])
+@tool(description="Process uploads async", queue=True)
+def process_upload(file_key: str) -> str:
+    return transform(file_key)
 ```
 
-### Custom provider
+These hints are picked up by `machete synth` to create EventBridge rules and SQS queues automatically.
 
-Implement the `LLMProvider` Protocol — no inheritance needed:
+### Type-driven tool schemas
+
+Tool parameters are automatically converted to JSON Schema via Pydantic, so LLMs understand your tool signatures natively:
 
 ```python
-from machete.llm import LLMProvider
+@tool(description="Search with filters")
+def search(query: str, max_results: int = 10, include_archived: bool = False) -> str:
+    ...
 
-class MyProvider:
-    def complete(self, messages, tools=None, *, model="", temperature=0.0, max_tokens=4096):
-        # Call your LLM, return IOResult[LLMResponse, AgentError]
-        ...
-
-# MyProvider satisfies LLMProvider via structural subtyping (PEP 544)
+# Machete generates this for the LLM:
+# {"type": "object", "properties": {"query": {"type": "string"}, ...}, "required": ["query"]}
 ```
 
 ## Project Status
 
-**v0.1.0** — early but functional. The full vertical slice works: define agents with decorators, run them locally, synthesize AWS infrastructure via CDK.
+**v0.1.0** -- early but functional. The full vertical slice works: define agents with decorators, run them locally, synthesize AWS infrastructure via CDK.
 
 - 55 tests passing (unit + CDK integration)
 - CI on GitHub Actions (Python 3.11, 3.12, 3.13)
@@ -275,18 +492,21 @@ class MyProvider:
 
 - `@agent`, `@tool`, `@step` decorators with metadata inference
 - Agentic loop with tool calling (LLM call -> tool exec -> repeat)
-- Anthropic and OpenAI adapters
-- Local execution (`run()`, Jupyter-friendly)
+- Anthropic and OpenAI providers
+- Local execution (`run()`, `run_async()`, Jupyter-friendly)
+- Middleware pipeline
 - Infrastructure analysis and CDK synthesis (Lambda, API Gateway, SQS, EventBridge)
 - CLI (`run`, `synth`, `graph`, `deploy`)
+- Deterministic testing with `MockProvider`
 
-### What's next
+### Roadmap
 
 - Streaming responses
 - Multi-agent pipelines
 - State persistence (DynamoDB)
 - More cloud targets (GCP, Azure)
 - Observability / tracing middleware
+- Plugin registry for community tools
 
 ## Contributing
 
@@ -296,6 +516,8 @@ cd agente-machete
 uv sync --dev --extra infra
 uv run pytest tests/ -v
 ```
+
+The codebase is ~2,200 lines of Python. Reading `src/machete/decorators.py` and `src/machete/pipeline.py` covers the core design.
 
 Issues and PRs welcome at [github.com/waltervargas/agente-machete](https://github.com/waltervargas/agente-machete/issues).
 
